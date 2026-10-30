@@ -1,0 +1,153 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# APEX FARM · build-apk.yml
+# Triggered by the ApexBuilder client (web console or Android app) via
+# workflow_dispatch with inputs: project (uuid), platform (apk|aab).
+#
+# Pipeline:
+#   1. Stage sources      – copy projects/<id>/ + capacitor-template/ into workdir
+#   2. Prepare signing    – materialize keystore from secrets (or owner key)
+#   3. Configure project  – scripts/configure_project.py rewrites the wrapper:
+#                           manifest permissions, app links, strings, colors,
+#                           splash, icon, R8/protection, capacitor config
+#   4. Build release      – gradle wrapper + assembleRelease / bundleRelease
+#   5. Sign & verify      – apksigner verification + artifact upload
+# ─────────────────────────────────────────────────────────────────────────────
+name: "Apex Farm · Build APK"
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "ApexBuilder project id (uuid)"
+        required: true
+        type: string
+      platform:
+        description: "apk or aab"
+        required: false
+        default: "apk"
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: apex-farm-${{ github.event.inputs.project }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_VERSION: "8.7"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout farm
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure Gradle present
+        run: |
+          if ! command -v gradle >/dev/null 2>&1; then
+            curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /opt
+            ln -sf "/opt/gradle-${GRADLE_VERSION}/bin/gradle" /usr/local/bin/gradle
+          fi
+          gradle --version
+
+      - name: Stage sources
+        run: |
+          set -euo pipefail
+          PROJECT="${{ github.event.inputs.project }}"
+          test -f "projects/${PROJECT}/config.json" || { echo "::error::projects/${PROJECT}/config.json missing — did the client push it?"; exit 1; }
+          rm -rf work
+          mkdir -p work
+          cp -r capacitor-template work/app
+          mkdir -p "work/projects/${PROJECT}"
+          cp -r "projects/${PROJECT}/." "work/projects/${PROJECT}/"
+          echo "Staged projects/${PROJECT}:"
+          ls -la "work/projects/${PROJECT}"
+
+      - name: Prepare signing
+        run: |
+          set -euo pipefail
+          if [ -n "${APEX_KEYSTORE_B64:-}" ]; then
+            echo "${APEX_KEYSTORE_B64}" | base64 -d > work/app/android/app/apex-release.keystore
+            echo "APEX_KEYSTORE_PASS=${APEX_KEYSTORE_PASS}" >> "$GITHUB_ENV"
+            echo "APEX_KEY_ALIAS=${APEX_KEY_ALIAS}" >> "$GITHUB_ENV"
+            echo "APEX_KEY_PASS=${APEX_KEY_PASS}" >> "$GITHUB_ENV"
+            echo "Keystore materialized from APEX_KEYSTORE_B64 secret."
+          else
+            echo "No APEX_KEYSTORE_B64 secret — release will fall back to the auto debug keystore (still signed, still installable)."
+          fi
+          if [ -f work/app/android/keystore.properties ]; then
+            echo "Owner key file found — it overrides repo secrets."
+            grep APEX_KEYSTORE work/app/android/keystore.properties | sed 's/=.*/=<present>/'
+          fi
+
+      - name: Configure project
+        run: |
+          python -m pip install --quiet pillow
+          python scripts/configure_project.py "work/projects/${{ github.event.inputs.project }}" "work/app"
+
+      - name: Prepare Gradle wrapper
+        working-directory: work/app/android
+        run: |
+          set -euo pipefail
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version ${GRADLE_VERSION} --no-daemon
+          fi
+          chmod +x gradlew
+
+      - name: Build release
+        working-directory: work/app/android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          set -euo pipefail
+          MODE=$(cat ../build_mode.txt 2>/dev/null || echo assembleRelease)
+          echo "::group::gradle ${MODE}"
+          ./gradlew ${MODE} --no-daemon --stacktrace
+          echo "::endgroup::"
+
+      - name: Sign & verify
+        run: |
+          set -euo pipefail
+          PROJECT="${{ github.event.inputs.project }}"
+          PLATFORM="${{ github.event.inputs.platform || 'apk' }}"
+          mkdir -p dist
+          if [ "$PLATFORM" = "aab" ]; then
+            SRC=$(find work/app/android/app/build/outputs/bundle/release -name "*.aab" | head -n1)
+            cp "$SRC" "dist/apex-${PROJECT}-release.aab"
+            echo "AAB staged: dist/apex-${PROJECT}-release.aab"
+          else
+            SRC=$(find work/app/android/app/build/outputs/apk/release -name "*.apk" | head -n1)
+            cp "$SRC" "dist/apex-${PROJECT}-release.apk"
+            ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+            APKSIGNER=$(find "${ANDROID_HOME:-/nonexistent}"/build-tools -name apksigner -type f 2>/dev/null | sort -V | tail -n1)
+            if [ -n "$APKSIGNER" ]; then
+              "$APKSIGNER" --verify --print-certs "dist/apex-${PROJECT}-release.apk"
+              echo "APK signature verified with apksigner."
+            else
+              echo "apksigner not found in build-tools; skipping external verify (gradle already signed the APK)."
+            fi
+          fi
+          ls -la dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "apex-${{ github.event.inputs.project }}-${{ github.event.inputs.platform || 'apk' }}"
+          path: dist/
+          retention-days: 14

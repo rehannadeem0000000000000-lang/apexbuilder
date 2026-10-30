@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-ink-950: #06080a;
+  --color-ink-900: #0a0d10;
+  --color-ink-850: #0e1216;
+  --color-ink-800: #13181e;
+  --color-ink-750: #171d24;
+  --color-ink-700: #1d242d;
+  --color-ink-600: #28313c;
+  --color-ink-500: #3a4653;
+  --color-ink-400: #556372;
+  --color-ink-300: #7b8a9b;
+  --color-ink-200: #a3b0bd;
+  --color-ink-100: #cdd6df;
+  --color-ink-50: #eaf0f6;
+
+  --color-apex-300: #7cefb1;
+  --color-apex-400: #4fe695;
+  --color-apex-500: #3ddc84;
+  --color-apex-600: #29c46f;
+  --color-apex-700: #1ea35a;
+
+  --color-amberx-400: #ffc24b;
+  --color-amberx-500: #f5a524;
+  --color-danger-400: #ff7a76;
+  --color-danger-500: #ff5c5c;
+  --color-danger-600: #e63f3f;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(61, 220, 132, 0.28);
+  color: #eaf0f6;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #28313c transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #28313c;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes apex-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.45);
+  }
+  50% {
+    opacity: 0.65;
+    box-shadow: 0 0 0 5px rgba(61, 220, 132, 0);
+  }
+}
+.apex-pulse {
+  animation: apex-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes apex-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.apex-fade-up {
+  animation: apex-fade-up 0.28s ease-out both;
+}
+
+@keyframes apex-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.apex-blink {
+  animation: apex-blink 1s step-end infinite;
+}
+
+@keyframes apex-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.apex-spin {
+  animation: apex-spin 0.9s linear infinite;
+}

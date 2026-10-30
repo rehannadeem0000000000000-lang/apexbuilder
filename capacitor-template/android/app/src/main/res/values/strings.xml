@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Apex Wrapper</string>
+    <string name="google_default_client_id" translatable="false"></string>
+    <string name="splash_title">Loading…</string>
+</resources>

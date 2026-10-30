@@ -1,0 +1,9 @@
+{
+  "appId": "com.apex.placeholder",
+  "appName": "Apex Wrapper",
+  "webDir": "web",
+  "server": {
+    "androidScheme": "https"
+  },
+  "backgroundColor": "#0C0E11"
+}
