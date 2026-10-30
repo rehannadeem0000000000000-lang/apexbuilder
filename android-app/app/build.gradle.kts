@@ -8,7 +8,7 @@ plugins {
 
 // Owner key supplied via keystore.properties or CI environment.
 val apexProps = Properties().apply {
-    file("keystore.properties").takeIf { it.exists() }?.let { load(InputStreamReader(it.inputStream(), "utf-8")) }
+    file("keystore.properties").takeIf { it.exists() }?.let { load(it.inputStream().reader()) }
 }
 fun kp(name: String): String = System.getenv(name) ?: apexProps.getProperty(name) ?: ""
 val hasReleaseKeystore = file("apex-release.keystore").exists() && kp("APEX_KEYSTORE_B64").isNotBlank()
